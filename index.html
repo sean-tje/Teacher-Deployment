@@ -205,6 +205,12 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
         // key: unique key for class-slot (e.g., "1-1-Monday-09_00-10_00-0")
         // value: {name: TeacherName, type: 'auto'/'manual'}
         let assignments = {}; 
+        
+        // This is a new Map to store a lightweight, findable copy of class data
+        // key: slotKey (e.g., "1-1-Monday-09_00-10_00-0")
+        // value: { ClassName, Programme, Day, TimeSlot }
+        let classSlotMap = new Map();
+
         let teacherOptionsHTML = '<option value="Unassigned">-- Unassigned --</option>';
 
         // DOM elements
@@ -357,7 +363,7 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
             
             // 5. Build UI components
             buildTeacherOptions();
-            populateMasterTable();
+            populateMasterTable(); // This now builds the classSlotMap
             populateTeacherSelect();
             runConflictCheck(); // Run check after auto-assign
             updateLoadReport();
@@ -443,7 +449,15 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
                 if (currentAssignments[assignedSlotKey].name === teacher.TeacherName) {
                     
                     // Find the class associated with this slotKey
-                    const assignedClass = getClassFromSlotKey(assignedSlotKey);
+                    // FIX: This lookup was failing. Use the new classSlotMap which is built *after* this.
+                    // For auto-assign, we must look up from the `classes` array.
+                    const assignedClass = classes.find(function(c) {
+                        const req = parseInt(c.RequiredTeachers) || 0;
+                        for(let i=0; i<req; i++) {
+                            if (getSlotKey(c, i) === assignedSlotKey) return true;
+                        }
+                        return false;
+                    });
                     
                     if (assignedClass && assignedClass.Day === classToAssign.Day && assignedClass.TimeSlot === classToAssign.TimeSlot) {
                         return false; // Double booked
@@ -517,6 +531,7 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
                 </tr>
             `;
             masterTableBody.innerHTML = ''; // Clear existing
+            classSlotMap.clear(); // Clear the lookup map
 
             classes.forEach(function(cls) {
                 const required = parseInt(cls.RequiredTeachers);
@@ -524,6 +539,16 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
 
                 for (let i = 0; i < required; i++) {
                     const slotKey = getSlotKey(cls, i);
+                    
+                    // *** NEW FIX: Populate the lookup map ***
+                    // Store a lightweight copy of the class data needed for lookups
+                    classSlotMap.set(slotKey, {
+                        ClassName: cls.ClassName,
+                        Programme: cls.Programme,
+                        Day: cls.Day,
+                        TimeSlot: cls.TimeSlot
+                    });
+
                     const row = document.createElement('tr');
                     row.id = `row-${slotKey}`;
                     row.className = "group-row"; // For styling
@@ -631,21 +656,12 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
 
         /**
          * Finds the class object associated with a given slotKey.
-         * THIS WAS THE BUGGY FUNCTION.
+         * THIS IS THE NEW, FIXED FUNCTION.
          */
         function getClassFromSlotKey(slotKey) {
-            // "1-1-Monday-09_00-10_00-0"
-            const parts = slotKey.split('-');
-            const index = parts.pop(); // Remove index
-            const timeKey = parts.pop(); // Remove time
-            const day = parts.pop(); // Remove day
-            const className = parts.join('-'); // Re-join class name
-            const timeSlot = timeKey.replace(/_/g, ':'); // Fix time
-
-            // Find the original class in the `classes` array
-            return classes.find(function(c) {
-                return c.ClassName === className && c.Day === day && c.TimeSlot === timeSlot;
-            });
+            // This function now relies on the `classSlotMap` which is
+            // populated when the master table is built.
+            return classSlotMap.get(slotKey);
         }
 
         /**
@@ -663,8 +679,8 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
             const classToAssign = getClassFromSlotKey(slotKey);
 
             if (!teacher || !classToAssign) {
-                 // This can happen if data is stale, but it's not a user-facing conflict
-                console.error("Could not find teacher or class for slotKey", slotKey);
+                 // This error was the problem. It should not happen now.
+                 // console.error("Could not find teacher or class for slotKey", slotKey);
                 return conflicts;
             }
 
@@ -685,9 +701,17 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
             });
 
             // 2. Same-Class Assignment Check
-            const classKey = getClassKey(classToAssign);
-            const required = parseInt(classToAssign.RequiredTeachers);
-            if (!isNaN(required)) {
+            // Re-build the base class key to check siblings
+            const classKeyParts = slotKey.split('-');
+            classKeyParts.pop(); // remove the index
+            const classKey = classKeyParts.join('-');
+            
+            const originalClass = classes.find(function(c) {
+                return getClassKey(c) === classKey;
+            });
+            const required = originalClass ? parseInt(originalClass.RequiredTeachers) : 0;
+            
+            if (required > 1) {
                 for (let i = 0; i < required; i++) {
                     const otherSlotKey = `${classKey}-${i}`;
                     if (slotKey !== otherSlotKey && assignments[otherSlotKey] && assignments[otherSlotKey].name === teacherName) {
@@ -800,7 +824,7 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
             try {
                 // Add a check for valid format
                 if (!timeSlot || !timeSlot.includes('-') || !timeSlot.includes(':')) {
-                    console.warn("Invalid timeSlot for duration calc:", timeSlot);
+                    // console.warn("Invalid timeSlot for duration calc:", timeSlot);
                     return 0;
                 }
                 const parts = timeSlot.split('-');
@@ -812,7 +836,7 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
                 
                 return endMinutes - startMinutes;
             } catch (e) {
-                console.error("Error parsing timeslot:", timeSlot, e);
+                // console.error("Error parsing timeslot:", timeSlot, e);
                 return 0;
             }
         }
@@ -842,7 +866,7 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
             Object.keys(assignments).forEach(function(slotKey) {
                 const assignment = assignments[slotKey];
                 if (assignment.name !== "Unassigned" && loads.hasOwnProperty(assignment.name)) {
-                    const cls = getClassFromSlotKey(slotKey);
+                    const cls = getClassFromSlotKey(slotKey); // Use new function
                     if (cls) {
                         loads[assignment.name].classes++;
                         loads[assignment.name].minutes += getDurationInMinutes(cls.TimeSlot);
@@ -899,7 +923,7 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
             Object.keys(assignments).forEach(function(slotKey) {
                 const assignment = assignments[slotKey];
                 if (assignment.name === selectedTeacher) {
-                    const cls = getClassFromSlotKey(slotKey);
+                    const cls = getClassFromSlotKey(slotKey); // Use new function
                     if (cls) {
                         teacherClasses.push(cls);
                     }
@@ -983,7 +1007,7 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
                 Object.keys(assignments).forEach(function(slotKey) {
                     const assignment = assignments[slotKey];
                     if (assignment.name === teacher.TeacherName) {
-                        const cls = getClassFromSlotKey(slotKey);
+                        const cls = getClassFromSlotKey(slotKey); // Use new function
                         if (cls) {
                             teacherClasses.push(cls);
                         }
@@ -1016,7 +1040,7 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
          * Exports the main deployment table as a TSV string.
          */
         function exportDeploymentTable() {
-             if (classes.length === 0) {
+             if (Object.keys(assignments).length === 0) {
                 alert("Please process data first.");
                 return;
             }
@@ -1025,31 +1049,25 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
             // Add Header Row
             exportData.push("Class Name\tSlot\tProgramme\tDay\tTime\tAssigned Teacher\tStatus");
 
-            // Sort classes by day and time
-            const sortedClasses = classes.slice().sort(function(a, b) {
-                const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-                const dayIndexA = days.indexOf(a.Day);
-                const dayIndexB = days.indexOf(b.Day);
-                if (dayIndexA !== dayIndexB) return dayIndexA - dayIndexB;
-                return a.TimeSlot.localeCompare(b.TimeSlot);
-            });
+            // Sort the slot keys to ensure a consistent export order
+            const sortedSlotKeys = Object.keys(assignments).sort();
 
-            sortedClasses.forEach(function(cls) {
-                const required = parseInt(cls.RequiredTeachers);
-                if (required === 0) return; // Don't export 0-teacher rows
+            sortedSlotKeys.forEach(function(slotKey) {
+                const cls = getClassFromSlotKey(slotKey); // Use new function
+                if (!cls) return; // Skip if class isn't found (shouldn't happen)
+                
+                // Get slot index from key
+                const slotIndex = parseInt(slotKey.split('-').pop()) + 1;
+                
+                const assignment = assignments[slotKey];
+                const teacherName = (assignment && assignment.name !== "Unassigned") ? assignment.name : "";
+                
+                const statusEl = document.getElementById(`status-${slotKey}`);
+                const statusText = statusEl ? statusEl.textContent : "Unassigned";
 
-                for (let i = 0; i < required; i++) {
-                    const slotKey = getSlotKey(cls, i);
-                    const assignment = assignments[slotKey];
-                    const teacherName = (assignment && assignment.name !== "Unassigned") ? assignment.name : "";
-                    
-                    const statusEl = document.getElementById(`status-${slotKey}`);
-                    const statusText = statusEl ? statusEl.textContent : "Unassigned";
-
-                    exportData.push(
-                        `${cls.ClassName}\t${i+1}\t${cls.Programme}\t${cls.Day}\t${cls.TimeSlot}\t${teacherName}\t${statusText}`
-                    );
-                }
+                exportData.push(
+                    `${cls.ClassName}\t${slotIndex}\t${cls.Programme}\t${cls.Day}\t${cls.TimeSlot}\t${teacherName}\t${statusText}`
+                );
             });
 
             const tsvString = exportData.join('\n');
