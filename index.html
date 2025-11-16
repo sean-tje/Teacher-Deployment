@@ -110,7 +110,8 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
                     <textarea id="classData" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" placeholder="ClassName,Programme,Day,TimeSlot,RequiredTeachers
 1-1,Mathematics,Monday,09:00-10:00,1
 1-2,Mathematics,Monday,10:00-11:00,2
-3-1,Physics,Monday,09:00-10:00,1"></textarea>
+3-1,Physics,Monday,09:00-10:00,1
+1-1,Recess,Monday,10:00-10:30,0"></textarea>
                 </div>
             </div>
             <button id="processButton" class="mt-4 w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
@@ -201,7 +202,7 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
         let teachers = [];
         let classes = [];
         // `assignments` stores the teacher assigned to a specific class *slot*
-        // key: unique key for class-slot (e.g., "1-1-Monday-09_00-10_00-0")
+        // key: unique key for class-slot (e..g, "1-1-Monday-09_00-10_00-0")
         // value: {name: TeacherName, type: 'auto'/'manual'}
         let assignments = {}; 
         let teacherOptionsHTML = '<option value="Unassigned">-- Unassigned --</option>';
@@ -309,8 +310,8 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
                      errors.push(`Class Schedule (Row ${index + 1}): Missing Programme for ${c.ClassName}.`);
                 }
 
-                if (!c.RequiredTeachers || isNaN(parseInt(c.RequiredTeachers)) || parseInt(c.RequiredTeachers) < 1) {
-                    errors.push(`Class Schedule (Row ${index + 1}): Invalid 'RequiredTeachers' for ${c.ClassName}. Must be a number 1 or greater.`);
+                if (c.RequiredTeachers === "" || isNaN(parseInt(c.RequiredTeachers)) || parseInt(c.RequiredTeachers) < 0) {
+                    errors.push(`Class Schedule (Row ${index + 1}): Invalid 'RequiredTeachers' for ${c.ClassName}. Must be a number 0 or greater.`);
                 }
             });
 
@@ -395,6 +396,8 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
             // Loop through each class and each required slot
             sortedClasses.forEach(function(classToAssign) {
                 const required = parseInt(classToAssign.RequiredTeachers);
+                if (required === 0) return; // Skip classes that need 0 teachers
+
                 for (let i = 0; i < required; i++) {
                     const slotKey = getSlotKey(classToAssign, i);
                     
@@ -437,14 +440,9 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
             // 1. Check for Double Booking (at the same time)
             for (const assignedSlotKey in currentAssignments) {
                 if (currentAssignments[assignedSlotKey].name === teacher.TeacherName) {
-                    const assignedClass = classes.find(function(c) {
-                        // Check if assignedSlotKey belongs to this class
-                        const numSlots = parseInt(c.RequiredTeachers);
-                        for (let i=0; i<numSlots; i++) {
-                            if (getSlotKey(c, i) === assignedSlotKey) return true;
-                        }
-                        return false;
-                    });
+                    
+                    // Find the class associated with this slotKey
+                    const assignedClass = getClassFromSlotKey(assignedSlotKey);
                     
                     if (assignedClass && assignedClass.Day === classToAssign.Day && assignedClass.TimeSlot === classToAssign.TimeSlot) {
                         return false; // Double booked
@@ -521,6 +519,8 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
 
             classes.forEach(function(cls) {
                 const required = parseInt(cls.RequiredTeachers);
+                if (required === 0) return; // Don't show rows for 0-teacher classes
+
                 for (let i = 0; i < required; i++) {
                     const slotKey = getSlotKey(cls, i);
                     const row = document.createElement('tr');
@@ -635,10 +635,13 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
             // "1-1-Monday-09_00-10_00-0"
             const parts = slotKey.split('-');
             const index = parts.pop();
-            const classKey = parts.join('-');
-            
+            const timeParts = parts.pop().split('_');
+            const day = parts.pop();
+            const className = parts.join('-');
+            const timeSlot = timeParts.join(':');
+
             return classes.find(function(c) {
-                return getClassKey(c) === classKey;
+                return c.ClassName === className && c.Day === day && c.TimeSlot === timeSlot;
             });
         }
 
@@ -1017,6 +1020,8 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
 
             sortedClasses.forEach(function(cls) {
                 const required = parseInt(cls.RequiredTeachers);
+                if (required === 0) return; // Don't export 0-teacher rows
+
                 for (let i = 0; i < required; i++) {
                     const slotKey = getSlotKey(cls, i);
                     const assignment = assignments[slotKey];
