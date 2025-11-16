@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto-Scheduler Tool</title>
+    <!-- Importing Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for a cleaner look */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        textarea {
+            font-family: monospace;
+            height: 150px;
+        }
+        .table-cell {
+            padding: 10px 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .table-header {
+            padding: 10px 12px;
+            border-bottom: 2px solid #cbd5e1;
+            background-color: #f8fafc;
+            font-weight: 600;
+        }
+        /* Style for grouped class rows */
+        .group-row:not(:last-child) .table-cell {
+            border-bottom-style: dashed;
+        }
+        .app-section {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .conflict-item {
+            border-left: 4px solid #ef4444;
+            padding: 8px 12px;
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+        .warning-item {
+             border-left: 4px solid #f59e0b;
+            padding: 8px 12px;
+            background-color: #fef3c7;
+            color: #92400e;
+        }
+        .validation-error {
+            color: #dc2626;
+            background-color: #fee2e2;
+            border: 1px solid #fca5a5;
+            padding: 10px;
+            border-radius: 6px;
+        }
+        .validation-success {
+            color: #166534;
+            background-color: #dcfce7;
+            border: 1px solid #86efac;
+            padding: 10px;
+            border-radius: 6px;
+        }
+
+        /* Status colors */
+        .status-unassigned { color: #6b7280; }
+        .status-auto { color: #1d4ed8; }
+        .status-manual { color: #16a34a; font-weight: 500; }
+        .status-conflict { color: #b91c1c; font-weight: 500; }
+
+        .copy-status-message {
+            color: #166534;
+            font-size: 0.875rem;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6">Advanced Teacher Deployment Tool</h1>
+
+        <!-- Section 1: Data Input -->
+        <div class="app-section">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Step 1: Paste Your Data</h2>
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Teacher Input -->
+                <div>
+                    <div class="flex justify-between items-center mb-2">
+                        <label for="teacherData" class="block text-sm font-medium text-gray-700">Teacher List (CSV Format)</label>
+                        <a href="https://docs.google.com/spreadsheets/d/1FqS2Kdkk7a54MBppujmtdSt_VwtMXc-wTZ12Q3crA-0/edit?gid=1022303499#gid=1022303499" target="_blank" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                            Open Sheet
+                        </a>
+                    </div>
+                    <textarea id="teacherData" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" placeholder="TeacherName,Restrictions
+Mr. Harrison,DAY_NOT:Friday;CLASS_ONLY:5-1
+Ms. Alvers,START_AFTER:10:00
+Mr. Cho,LEVEL_ONLY:3"></textarea>
+                </div>
+                <!-- Class Schedule Input -->
+                <div>
+                    <div class="flex justify-between items-center mb-2">
+                        <label for="classData" class="block text-sm font-medium text-gray-700">Class Schedule (CSV Format)</label>
+                         <a href="https://docs.google.com/spreadsheets/d/185gazl15j766tZWD3r27ZbEh2rlhBXVdtgJ8w2VJ1h8/edit?gid=335931596#gid=335931596" target="_blank" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                            Open Sheet
+                        </a>
+                    </div>
+                    <textarea id="classData" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" placeholder="ClassName,Programme,Day,TimeSlot,RequiredTeachers
+1-1,Mathematics,Monday,09:00-10:00,1
+1-2,Mathematics,Monday,10:00-11:00,2
+3-1,Physics,Monday,09:00-10:00,1"></textarea>
+                </div>
+            </div>
+            <button id="processButton" class="mt-4 w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                Auto-assign
+            </button>
+            <div id="validation-status" class="mt-4"></div>
+        </div>
+
+        <!-- Section 2: Deployment & Conflicts -->
+        <div class="grid lg:grid-cols-10 gap-6">
+            <!-- Master Deployment List -->
+            <div class="app-section lg:col-span-7">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-gray-700">Step 2: Assign Teachers</h2>
+                    <button id="exportTableButton" class="bg-gray-600 text-white font-semibold py-2 px-4 rounded-md shadow-sm hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+                        Copy Deployment Table
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead id="master-table-head">
+                            <!-- Headers will be injected by JS -->
+                        </thead>
+                        <tbody id="master-table-body" class="bg-white divide-y divide-gray-200">
+                            <tr><td class="p-4 text-center text-gray-500" colspan="6">Auto-assign data to see deployment list.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Conflicts List -->
+            <div class="app-section lg:col-span-3">
+                <h2 class="text-xl font-semibold text-gray-700 mb-4">Conflicts & Warnings</h2>
+                <div id="conflicts-list" class="space-y-3">
+                    <p class="text-gray-500">No conflicts detected.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 3: Teacher Load Report -->
+        <div class="app-section">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Step 3: Teacher Load Report</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead id="load-report-head">
+                        <tr>
+                            <th class="table-header text-left">Teacher</th>
+                            <th class="table-header text-left">Total Classes</th>
+                            <th class="table-header text-left">Total Time (HH:MM)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="load-report-body" class="bg-white divide-y divide-gray-200">
+                        <tr><td class="p-4 text-center text-gray-500" colspan="3">Auto-assign data to see load report.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Section 4: Individual View -->
+        <div class="app-section">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Step 4: View Individual Timetables</h2>
+            <div class="flex flex-wrap items-center gap-4">
+                <label for="teacherSelect" class="text-sm font-medium text-gray-700">Select Teacher:</label>
+                <select id="teacherSelect" class="block w-full md:w-1/3 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                    <option value="">-- Select a Teacher --</option>
+                </select>
+                <button id="exportButton" class="bg-green-600 text-white font-semibold py-2 px-4 rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                    Copy All Schedules
+                </button>
+                <span id="copy-status" class="copy-status-message">Copied!</span>
+            </div>
+            <div class="overflow-x-auto mt-4">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead id="individual-table-head">
+                        <!-- Headers will be injected by JS -->
+                    </thead>
+                    <tbody id="individual-table-body" class="bg-white divide-y divide-gray-200">
+                        <tr><td class="p-4 text-center text-gray-500" colspan="4">Select a teacher to see their schedule.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main JavaScript Logic -->
+    <script>
+        // Global data stores
+        let teachers = [];
+        let classes = [];
+        // `assignments` stores the teacher assigned to a specific class *slot*
+        // key: unique key for class-slot (e.g., "1-1-Monday-09_00-10_00-0")
+        // value: {name: TeacherName, type: 'auto'/'manual'}
+        let assignments = {}; 
+        let teacherOptionsHTML = '<option value="Unassigned">-- Unassigned --</option>';
+
+        // DOM elements
+        const processButton = document.getElementById('processButton');
+        const teacherDataEl = document.getElementById('teacherData');
+        const classDataEl = document.getElementById('classData');
+        const validationStatusEl = document.getElementById('validation-status');
+        const masterTableHead = document.getElementById('master-table-head');
+        const masterTableBody = document.getElementById('master-table-body');
+        const conflictsList = document.getElementById('conflicts-list');
+        const loadReportBody = document.getElementById('load-report-body');
+        const teacherSelect = document.getElementById('teacherSelect');
+        const individualTableHead = document.getElementById('individual-table-head');
+        const individualTableBody = document.getElementById('individual-table-body');
+        const exportButton = document.getElementById('exportButton');
+        const exportTableButton = document.getElementById('exportTableButton');
+        const copyStatusEl = document.getElementById('copy-status');
+
+        // Event Listeners
+        processButton.addEventListener('click', processAllData);
+        teacherSelect.addEventListener('change', showIndividualSchedule);
+        exportButton.addEventListener('click', exportAllSchedules);
+        exportTableButton.addEventListener('click', exportDeploymentTable);
+
+        /**
+         * Creates a unique key for a class session.
+         */
+        function getClassKey(cls) {
+            return `${cls.ClassName}-${cls.Day}-${cls.TimeSlot.replace(/:/g, '_')}`;
+        }
+
+        /**
+         * Creates a unique key for a specific teacher slot within a class session.
+         */
+        function getSlotKey(cls, index) {
+            return `${getClassKey(cls)}-${index}`;
+        }
+
+        /**
+         * Parses CSV text into an array of objects.
+         */
+        function parseCSV(csvText) {
+            const lines = csvText.trim().split('\n');
+            if (lines.length < 1) return []; // Allow just headers
+            
+            const headers = lines.shift().split(',').map(function(h) { return h.trim(); });
+            
+            return lines
+                .map(function(line) {
+                    // Check for empty lines or lines with just commas
+                    const trimmedLine = line.trim();
+                    if (trimmedLine === '' || trimmedLine.replace(/,/g, '') === '') {
+                        return null; // Mark this line for removal
+                    }
+                    
+                    const values = line.split(',').map(function(v) { return v.trim(); });
+                    let obj = {};
+                    headers.forEach(function(header, index) {
+                        obj[header] = values[index] || ""; // Handle empty fields
+                    });
+                    return obj;
+                })
+                .filter(function(obj) { return obj !== null; }); // Filter out empty/invalid lines
+        }
+
+        /**
+         * Validates the parsed teacher and class data.
+         */
+        function validateData() {
+            let errors = [];
+            let teacherNames = new Set();
+            let classSlots = new Set(); // Use this to check for duplicate slots
+            // Regex for class names: 1-1 to 4-8, and 5-1
+            const classNameRegex = /^[1-4]-[1-8]$|^5-1$/;
+
+            teachers.forEach(function(t, index) {
+                if (!t.TeacherName) {
+                    errors.push(`Teacher List (Row ${index + 1}): Missing TeacherName.`);
+                } else if (teacherNames.has(t.TeacherName)) {
+                    errors.push(`Teacher List: Duplicate TeacherName found: "${t.TeacherName}".`);
+                }
+                teacherNames.add(t.TeacherName);
+            });
+
+            classes.forEach(function(c, index) {
+                const slotKey = `${c.ClassName}-${c.Day}-${c.TimeSlot}`;
+                if (classSlots.has(slotKey)) {
+                    errors.push(`Class Schedule: Duplicate class slot found: "${c.ClassName}" on ${c.Day} at ${c.TimeSlot}.`);
+                }
+                classSlots.add(slotKey);
+
+                if (!c.ClassName) {
+                    errors.push(`Class Schedule (Row ${index + 1}): Missing ClassName.`);
+                } else if (!classNameRegex.test(c.ClassName)) {
+                    errors.push(`Class Schedule (Row ${index + 1}): Invalid ClassName format: "${c.ClassName}". Must be "1-1" to "4-8" or "5-1".`);
+                }
+
+                if (!c.Day || !c.TimeSlot) {
+                     errors.push(`Class Schedule (Row ${index + 1}): Missing Day or TimeSlot.`);
+                }
+                
+                if (!c.Programme) {
+                     errors.push(`Class Schedule (Row ${index + 1}): Missing Programme for ${c.ClassName}.`);
+                }
+
+                if (!c.RequiredTeachers || isNaN(parseInt(c.RequiredTeachers)) || parseInt(c.RequiredTeachers) < 1) {
+                    errors.push(`Class Schedule (Row ${index + 1}): Invalid 'RequiredTeachers' for ${c.ClassName}. Must be a number 1 or greater.`);
+                }
+            });
+
+            if (errors.length > 0) {
+                validationStatusEl.className = 'validation-error';
+                validationStatusEl.innerHTML = `<strong>Data Validation Failed:</strong><ul class="list-disc pl-5 mt-2">${errors.map(function(e) { return `<li>${e}</li>`; }).join('')}</ul>`;
+                return false;
+            }
+
+            validationStatusEl.className = 'validation-success';
+            validationStatusEl.innerHTML = `<strong>Data Validated Successfully.</strong> ${teachers.length} teachers and ${classes.length} classes loaded.`;
+            return true;
+        }
+
+        /**
+         * Main function to process both text areas and build the UI.
+         */
+        function processAllData() {
+            // 1. Clear all UI
+            masterTableBody.innerHTML = `<tr><td class="p-4 text-center text-gray-500" colspan="6">Validate and process data to see deployment list.</td></tr>`;
+            conflictsList.innerHTML = '<p class="text-gray-500">No conflicts detected.</p>';
+            loadReportBody.innerHTML = `<tr><td class="p-4 text-center text-gray-500" colspan="3">Auto-assign data to see load report.</td></tr>`;
+            individualTableBody.innerHTML = `<tr><td class="p-4 text-center text-gray-500" colspan="4">Select a teacher to see their schedule.</td></tr>`;
+            
+            // 2. Process Teachers & Classes
+            try {
+                teachers = parseCSV(teacherDataEl.value);
+                classes = parseCSV(classDataEl.value);
+            } catch (e) {
+                validationStatusEl.className = 'validation-error';
+                validationStatusEl.innerHTML = `<strong>Error parsing data.</strong> Please check CSV format. ${e.message}`;
+                return;
+            }
+            
+            // 3. Validate Data
+            if (!validateData()) {
+                return; // Stop if validation fails
+            }
+
+            // 4. Run Auto-Assignment
+            autoAssignClasses();
+            
+            // 5. Build UI components
+            buildTeacherOptions();
+            populateMasterTable();
+            populateTeacherSelect();
+            runConflictCheck(); // Run check after auto-assign
+            updateLoadReport();
+            showIndividualSchedule(); // Clear individual table
+        }
+
+        /**
+         * Calculates the current load (number of classes) for each teacher.
+         */
+        function getTeacherLoads(currentAssignments) {
+            const loads = {};
+            teachers.forEach(function(t) { loads[t.TeacherName] = 0; });
+            
+            Object.values(currentAssignments).forEach(function(assignment) {
+                if (assignment.name !== "Unassigned" && loads.hasOwnProperty(assignment.name)) {
+                    loads[assignment.name]++;
+                }
+            });
+            return loads;
+        }
+
+        /**
+         * Auto-assignment logic
+         */
+        function autoAssignClasses() {
+            let newAssignments = {};
+            
+            // Sort classes to assign them in a predictable order
+            const sortedClasses = classes.slice().sort(function(a, b) {
+                const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+                const dayIndexA = days.indexOf(a.Day);
+                const dayIndexB = days.indexOf(b.Day);
+                if (dayIndexA !== dayIndexB) return dayIndexA - dayIndexB;
+                return a.TimeSlot.localeCompare(b.TimeSlot);
+            });
+
+            // Loop through each class and each required slot
+            sortedClasses.forEach(function(classToAssign) {
+                const required = parseInt(classToAssign.RequiredTeachers);
+                for (let i = 0; i < required; i++) {
+                    const slotKey = getSlotKey(classToAssign, i);
+                    
+                    // Get current teacher loads for fair assignment
+                    const teacherLoads = getTeacherLoads(newAssignments);
+                    
+                    // Sort potential teachers by their current load (fewest classes first)
+                    const potentialTeachers = teachers.slice().sort(function(a, b) {
+                        return teacherLoads[a.TeacherName] - teacherLoads[b.TeacherName];
+                    });
+
+                    // Find the first suitable teacher
+                    let assigned = false;
+                    for (let j = 0; j < potentialTeachers.length; j++) {
+                        const teacher = potentialTeachers[j];
+                        if (isTeacherSuitable(teacher, classToAssign, i, newAssignments)) {
+                            newAssignments[slotKey] = { name: teacher.TeacherName, type: "auto" };
+                            assigned = true;
+                            break; // Assign the first suitable (least-loaded) teacher
+                        }
+                    }
+                    
+                    if (!assigned) {
+                        newAssignments[slotKey] = { name: "Unassigned", type: "auto" };
+                    }
+                }
+            });
+            
+            assignments = newAssignments;
+        }
+
+        /**
+         * Helper function to check if a teacher can be assigned a class
+         */
+        function isTeacherSuitable(teacher, classToAssign, slotIndex, currentAssignments) {
+            const rules = parseRestrictions(teacher.Restrictions);
+            const classLevel = classToAssign.ClassName.split('-')[0];
+            const classStartTime = classToAssign.TimeSlot.split('-')[0];
+
+            // 1. Check for Double Booking (at the same time)
+            for (const assignedSlotKey in currentAssignments) {
+                if (currentAssignments[assignedSlotKey].name === teacher.TeacherName) {
+                    const assignedClass = classes.find(function(c) {
+                        // Check if assignedSlotKey belongs to this class
+                        const numSlots = parseInt(c.RequiredTeachers);
+                        for (let i=0; i<numSlots; i++) {
+                            if (getSlotKey(c, i) === assignedSlotKey) return true;
+                        }
+                        return false;
+                    });
+                    
+                    if (assignedClass && assignedClass.Day === classToAssign.Day && assignedClass.TimeSlot === classToAssign.TimeSlot) {
+                        return false; // Double booked
+                    }
+                }
+            }
+
+            // 2. Check for Same-Class Assignment (can't be assigned to slot 0 AND slot 1)
+            const classKey = getClassKey(classToAssign);
+            for (let i = 0; i < slotIndex; i++) { // Check previous slots *for this class*
+                const prevSlotKey = `${classKey}-${i}`;
+                if (currentAssignments[prevSlotKey] && currentAssignments[prevSlotKey].name === teacher.TeacherName) {
+                    return false; // Already assigned to this class
+                }
+            }
+
+            // 3. Check all restrictions
+            for (let i = 0; i < rules.length; i++) {
+                const rule = rules[i];
+                switch(rule.type) {
+                    case 'DAY_NOT':
+                        if (rule.value.toLowerCase() === classToAssign.Day.toLowerCase()) return false;
+                        break;
+                    case 'START_AFTER':
+                        if (classStartTime < rule.value) return false;
+                        break;
+                    case 'LEVEL_ONLY':
+                        if (classLevel !== rule.value) return false;
+                        break;
+                    case 'CLASS_ONLY':
+                        if (classToAssign.ClassName !== rule.value) return false;
+                        break;
+                }
+            }
+            
+            // 4. MAX_CLASSES check
+            const maxClassesRule = rules.find(function(r) { return r.type === 'MAX_CLASSES'; });
+            if (maxClassesRule) {
+                const teacherLoads = getTeacherLoads(currentAssignments);
+                const currentLoad = teacherLoads[teacher.TeacherName] || 0;
+                if (currentLoad >= parseInt(maxClassesRule.value)) {
+                    return false; // Already at max load
+                }
+            }
+
+            return true; // Teacher is suitable
+        }
+
+        /**
+         * Builds the HTML string for teacher <option> elements.
+         */
+        function buildTeacherOptions() {
+            teacherOptionsHTML = '<option value="Unassigned">-- Unassigned --</option>';
+            teachers.forEach(function(teacher) {
+                teacherOptionsHTML += `<option value="${teacher.TeacherName}">${teacher.TeacherName}</option>`;
+            });
+        }
+
+        /**
+         * Populates the main assignment table (Master Deployment List).
+         */
+        function populateMasterTable() {
+            masterTableHead.innerHTML = `
+                <tr>
+                    <th class="table-header text-left">Class Name</th>
+                    <th class="table-header text-left">Programme</th>
+                    <th class="table-header text-left">Day</th>
+                    <th class="table-header text-left">Time</th>
+                    <th class="table-header text-left">Assign Teacher</th>
+                    <th class="table-header text-left">Status</th>
+                </tr>
+            `;
+            masterTableBody.innerHTML = ''; // Clear existing
+
+            classes.forEach(function(cls) {
+                const required = parseInt(cls.RequiredTeachers);
+                for (let i = 0; i < required; i++) {
+                    const slotKey = getSlotKey(cls, i);
+                    const row = document.createElement('tr');
+                    row.id = `row-${slotKey}`;
+                    row.className = "group-row"; // For styling
+                    
+                    const assignedTeacher = assignments[slotKey] ? assignments[slotKey].name : "Unassigned";
+
+                    // Only show class details on the first row of a group
+                    const classInfo = (i === 0) ? `<strong>${cls.ClassName}</strong>` : `&nbsp; <em>(Slot ${i + 1})</em>`;
+                    const programmeInfo = (i === 0) ? cls.Programme : "";
+                    const dayInfo = (i === 0) ? cls.Day : "";
+                    const timeInfo = (i === 0) ? cls.TimeSlot : "";
+
+                    row.innerHTML = `
+                        <td class="table-cell">${classInfo}</td>
+                        <td class="table-cell">${programmeInfo}</td>
+                        <td class="table-cell">${dayInfo}</td>
+                        <td class="table-cell">${timeInfo}</td>
+                        <td class="table-cell">
+                            <select class="w-full p-1 border border-gray-300 rounded-md" data-slot-key="${slotKey}" onchange="assignTeacher(event)">
+                                ${teacherOptionsHTML}
+                            </select>
+                        </td>
+                        <td class="table-cell">
+                            <span id="status-${slotKey}"></span>
+                        </td>
+                    `;
+                    masterTableBody.appendChild(row);
+                    
+                    // Set the dropdown value
+                    row.querySelector('select').value = assignedTeacher;
+                    
+                    // Set the initial status text
+                    updateStatusText(slotKey);
+                }
+            });
+        }
+
+        /**
+         * Populates the "Individual View" dropdown.
+         */
+        function populateTeacherSelect() {
+            teacherSelect.innerHTML = '<option value="">-- Select a Teacher --</option>';
+            teachers.forEach(function(teacher) {
+                teacherSelect.innerHTML += `<option value="${teacher.TeacherName}">${teacher.TeacherName}</option>`;
+            });
+        }
+
+        /**
+         * Handles the 'onchange' event from a teacher assignment dropdown.
+         */
+        function assignTeacher(event) {
+            const teacherName = event.target.value;
+            const slotKey = event.target.dataset.slotKey;
+            
+            // Update global assignment state and mark as 'manual'
+            assignments[slotKey] = { name: teacherName, type: "manual" };
+            
+            runConflictCheck();
+            updateLoadReport();
+            showIndividualSchedule(); // Update individual view
+        }
+        
+        /**
+         * Updates the status text and color for a row.
+         */
+         function updateStatusText(slotKey) {
+            const statusEl = document.getElementById(`status-${slotKey}`);
+            if (!statusEl) return;
+
+            const assignment = assignments[slotKey];
+            if (!assignment || assignment.name === "Unassigned") {
+                statusEl.textContent = "Unassigned";
+                statusEl.className = "status-unassigned";
+                return;
+            }
+            
+            // Check for conflicts related to this specific row
+            const conflicts = checkRowForConflicts(slotKey);
+            
+            if (conflicts.length > 0) {
+                statusEl.textContent = "Conflict!";
+                statusEl.className = "status-conflict";
+            } else if (assignment.type === 'manual') {
+                statusEl.textContent = "Assigned";
+                statusEl.className = "status-manual";
+            } else {
+                statusEl.textContent = "Auto-Assigned";
+                statusEl.className = "status-auto";
+            }
+         }
+
+        /**
+         * Parses a restriction string into an array of rule objects.
+         */
+        function parseRestrictions(restrictionsText) {
+            if (!restrictionsText) return [];
+            return restrictionsText.split(';').map(function(ruleStr) {
+                const parts = ruleStr.split(':');
+                if (parts.length < 2) return null; // Handle potential colons in value
+                const type = parts.shift().trim().toUpperCase();
+                const value = parts.join(':').trim(); // Re-join in case value had colons
+                return { type: type, value: value };
+            }).filter(Boolean); // Filter out any null/invalid rules
+        }
+
+        /**
+         * Finds the class object associated with a given slotKey.
+         */
+        function getClassFromSlotKey(slotKey) {
+            // "1-1-Monday-09_00-10_00-0"
+            const parts = slotKey.split('-');
+            const index = parts.pop();
+            const classKey = parts.join('-');
+            
+            return classes.find(function(c) {
+                return getClassKey(c) === classKey;
+            });
+        }
+
+        /**
+         * Checks a specific row/assignment for conflicts.
+         */
+        function checkRowForConflicts(slotKey) {
+            let conflicts = [];
+            const assignment = assignments[slotKey];
+            if (!assignment || assignment.name === "Unassigned") {
+                return conflicts;
+            }
+
+            const teacherName = assignment.name;
+            const teacher = teachers.find(function(t) { return t.TeacherName === teacherName; });
+            const classToAssign = getClassFromSlotKey(slotKey);
+
+            if (!teacher || !classToAssign) return conflicts;
+
+            const rules = parseRestrictions(teacher.Restrictions);
+            const classLevel = classToAssign.ClassName.split('-')[0];
+            const classStartTime = classToAssign.TimeSlot.split('-')[0];
+
+            // 1. Double Booking Check
+            Object.keys(assignments).forEach(function(otherSlotKey) {
+                if (slotKey === otherSlotKey) return; // Don't check against self
+                const otherAssignment = assignments[otherSlotKey];
+                if (otherAssignment.name === teacherName) {
+                    const otherClass = getClassFromSlotKey(otherSlotKey);
+                    if (otherClass && otherClass.Day === classToAssign.Day && otherClass.TimeSlot === classToAssign.TimeSlot) {
+                        conflicts.push(`<b>Double Booking:</b> ${teacherName} is also assigned to ${otherClass.ClassName} at this time.`);
+                    }
+                }
+            });
+
+            // 2. Same-Class Assignment Check
+            const classKey = getClassKey(classToAssign);
+            for (let i = 0; i < parseInt(classToAssign.RequiredTeachers); i++) {
+                const otherSlotKey = `${classKey}-${i}`;
+                if (slotKey !== otherSlotKey && assignments[otherSlotKey] && assignments[otherSlotKey].name === teacherName) {
+                    conflicts.push(`<b>Double Assignment:</b> ${teacherName} is already assigned to another slot for this same class.`);
+                    break; // Only need to report this once
+                }
+            }
+            
+            // 3. Advanced Restriction Checks
+            rules.forEach(function(rule) {
+                switch(rule.type) {
+                    case 'DAY_NOT':
+                        if (rule.value.toLowerCase() === classToAssign.Day.toLowerCase()) {
+                            conflicts.push(`<b>Restriction:</b> ${teacherName} is not available on ${rule.value}.`);
+                        }
+                        break;
+                    case 'START_AFTER':
+                        if (classStartTime < rule.value) { 
+                            conflicts.push(`<b>Restriction:</b> ${teacherName} must start after ${rule.value}.`);
+                        }
+                        break;
+                    case 'LEVEL_ONLY':
+                        if (classLevel !== rule.value) {
+                            conflicts.push(`<b>Restriction:</b> ${teacherName} can only teach Level ${rule.value}.`);
+                        }
+                        break;
+                    case 'CLASS_ONLY':
+                        if (classToAssign.ClassName !== rule.value) {
+                            conflicts.push(`<b>Restriction:</b> ${teacherName} can only teach ${rule.value}.`);
+                        }
+                        break;
+                }
+            });
+            
+            return conflicts;
+        }
+
+        /**
+         * Checks ALL assignments for conflicts and populates the conflict list.
+         */
+        function runConflictCheck() {
+            conflictsList.innerHTML = '';
+            let conflictsFound = 0;
+            const teacherAssignmentCounts = {};
+            teachers.forEach(function(t) { teacherAssignmentCounts[t.TeacherName] = 0; });
+            
+            // Pre-count assignments for MAX_CLASSES check
+            Object.values(assignments).forEach(function(assignment) {
+                if (assignment.name !== "Unassigned") {
+                    if (teacherAssignmentCounts.hasOwnProperty(assignment.name)) {
+                        teacherAssignmentCounts[assignment.name]++;
+                    }
+                }
+            });
+
+            // Check each row for conflicts
+            Object.keys(assignments).forEach(function(slotKey) {
+                const conflicts = checkRowForConflicts(slotKey);
+                conflicts.forEach(function(conflict) {
+                    conflictsFound++;
+                    if (typeof conflict === 'string') {
+                        addConflict(conflict, 'error');
+                    } else {
+                        addConflict(conflict.message, conflict.type);
+                    }
+                });
+                
+                // After checking conflicts, update the row's status
+                updateStatusText(slotKey);
+            });
+            
+            // 4. MAX_CLASSES Check (done after all other checks)
+            teachers.forEach(function(teacher) {
+                const rules = parseRestrictions(teacher.Restrictions);
+                const maxClassesRule = rules.find(function(r) { return r.type === 'MAX_CLASSES'; });
+                if (maxClassesRule) {
+                    const assignedCount = teacherAssignmentCounts[teacher.TeacherName];
+                    if (assignedCount > parseInt(maxClassesRule.value)) {
+                         conflictsFound++;
+                         addConflict(`<b>Restriction:</b> ${teacher.TeacherName} is over max classes (assigned ${assignedCount}, max ${maxClassesRule.value}).`, 'error');
+                    }
+                }
+            });
+
+            if (conflictsFound === 0) {
+                conflictsList.innerHTML = '<p class="text-green-600">No conflicts detected.</p>';
+            }
+        }
+
+        /**
+         * Helper to add a conflict message to the UI.
+         */
+        function addConflict(message, type = 'error') {
+            const item = document.createElement('div');
+            item.innerHTML = message;
+            item.className = (type === 'error') ? 'conflict-item' : 'warning-item';
+            
+            // Check for duplicates before adding
+            if (!conflictsList.innerHTML.includes(message)) {
+                 conflictsList.appendChild(item);
+            }
+        }
+
+        /**
+         * Calculates the duration of a time slot in minutes.
+         * e.g., "09:00-10:30" -> 90
+         */
+        function getDurationInMinutes(timeSlot) {
+            try {
+                const parts = timeSlot.split('-');
+                const startTime = parts[0].split(':');
+                const endTime = parts[1].split(':');
+                
+                const startMinutes = parseInt(startTime[0]) * 60 + parseInt(startTime[1]);
+                const endMinutes = parseInt(endTime[0]) * 60 + parseInt(endTime[1]);
+                
+                return endMinutes - startMinutes;
+            } catch (e) {
+                console.error("Error parsing timeslot:", timeSlot, e);
+                return 0;
+            }
+        }
+
+        /**
+         * Formats total minutes into "HH:MM" string.
+         */
+        function formatMinutesToHM(minutes) {
+            if (minutes === 0) return "00:00";
+            const h = Math.floor(minutes / 60);
+            const m = minutes % 60;
+            const hStr = h < 10 ? '0' + h : '' + h;
+            const mStr = m < 10 ? '0' + m : '' + m;
+            return `${hStr}:${mStr}`;
+        }
+
+        /**
+         * Updates the Teacher Load Report table.
+         */
+        function updateLoadReport() {
+            const loads = {};
+            teachers.forEach(function(t) {
+                loads[t.TeacherName] = { classes: 0, minutes: 0 };
+            });
+
+            Object.keys(assignments).forEach(function(slotKey) {
+                const assignment = assignments[slotKey];
+                if (assignment.name !== "Unassigned" && loads.hasOwnProperty(assignment.name)) {
+                    const cls = getClassFromSlotKey(slotKey);
+                    if (cls) {
+                        loads[assignment.name].classes++;
+                        loads[assignment.name].minutes += getDurationInMinutes(cls.TimeSlot);
+                    }
+                }
+            });
+
+            loadReportBody.innerHTML = ''; // Clear existing
+            
+            if (teachers.length === 0) {
+                loadReportBody.innerHTML = `<tr><td class="p-4 text-center text-gray-500" colspan="3">No teacher data.</td></tr>`;
+                return;
+            }
+
+            // Sort teachers alphabetically
+            const sortedTeachers = teachers.slice().sort(function(a, b) {
+                return a.TeacherName.localeCompare(b.TeacherName);
+            });
+
+            sortedTeachers.forEach(function(teacher) {
+                const load = loads[teacher.TeacherName];
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="table-cell">${teacher.TeacherName}</td>
+                    <td class="table-cell">${load.classes}</td>
+                    <td class="table-cell">${formatMinutesToHM(load.minutes)}</td>
+                `;
+                loadReportBody.appendChild(row);
+            });
+        }
+
+        /**
+         * Displays the selected teacher's schedule.
+         */
+        function showIndividualSchedule() {
+            const selectedTeacher = teacherSelect.value;
+            
+            individualTableHead.innerHTML = `
+                <tr>
+                    <th class="table-header text-left">Day</th>
+                    <th class="table-header text-left">Time</th>
+                    <th class="table-header text-left">Class Name</th>
+                    <th class="table-header text-left">Programme</th>
+                </tr>
+            `;
+            individualTableBody.innerHTML = '';
+            
+            if (!selectedTeacher) {
+                individualTableBody.innerHTML = `<tr><td class="p-4 text-center text-gray-500" colspan="4">Select a teacher to see their schedule.</td></tr>`;
+                return;
+            }
+
+            let teacherClasses = [];
+            Object.keys(assignments).forEach(function(slotKey) {
+                const assignment = assignments[slotKey];
+                if (assignment.name === selectedTeacher) {
+                    const cls = getClassFromSlotKey(slotKey);
+                    if (cls) {
+                        teacherClasses.push(cls);
+                    }
+                }
+            });
+
+            if (teacherClasses.length === 0) {
+                individualTableBody.innerHTML = `<tr><td class="p-4 text-center text-gray-500" colspan="4">${selectedTeacher} has no classes assigned.</td></tr>`;
+                return;
+            }
+
+            // Sort by day and time
+            teacherClasses.sort(function(a, b) {
+                const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+                const dayIndexA = days.indexOf(a.Day);
+                const dayIndexB = days.indexOf(b.Day);
+                if (dayIndexA !== dayIndexB) return dayIndexA - dayIndexB;
+                return a.TimeSlot.localeCompare(b.TimeSlot); // Compare time strings
+            });
+
+            teacherClasses.forEach(function(cls) {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="table-cell">${cls.Day}</td>
+                    <td class="table-cell">${cls.TimeSlot}</td>
+                    <td class="table-cell">${cls.ClassName}</td>
+                    <td class="table-cell">${cls.Programme}</td>
+                `;
+                individualTableBody.appendChild(row);
+            });
+        }
+
+        /**
+         * Copies text to the clipboard.
+         */
+        function copyToClipboard(text, statusEl) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';  // Prevent scrolling to bottom
+            textarea.style.opacity = 0;
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                statusEl.textContent = 'Copied to clipboard!';
+            } catch (err) {
+                statusEl.textContent = 'Failed to copy!';
+                console.error('Failed to copy text: ', err);
+            }
+            document.body.removeChild(textarea);
+            
+            // Show feedback
+            statusEl.style.opacity = 1;
+            setTimeout(function() {
+                statusEl.style.opacity = 0;
+            }, 2500);
+        }
+
+        /**
+         * Exports all teacher schedules as a TSV string to the clipboard.
+         */
+        function exportAllSchedules() {
+            if (teachers.length === 0) {
+                alert("Please process data first.");
+                return;
+            }
+
+            let exportData = [];
+            // Add Header Row - \t is for Tab
+            exportData.push("Teacher\tDay\tTime\tClass Name\tProgramme");
+
+            const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+            // Sort teachers alphabetically
+            const sortedTeachers = teachers.slice().sort(function(a, b) {
+                return a.TeacherName.localeCompare(b.TeacherName);
+            });
+
+            sortedTeachers.forEach(function(teacher) {
+                let teacherClasses = [];
+                Object.keys(assignments).forEach(function(slotKey) {
+                    const assignment = assignments[slotKey];
+                    if (assignment.name === teacher.TeacherName) {
+                        const cls = getClassFromSlotKey(slotKey);
+                        if (cls) {
+                            teacherClasses.push(cls);
+                        }
+                    }
+                });
+
+                if (teacherClasses.length > 0) {
+                    // Sort this teacher's classes by day and time
+                    teacherClasses.sort(function(a, b) {
+                        const dayIndexA = days.indexOf(a.Day);
+                        const dayIndexB = days.indexOf(b.Day);
+                        if (dayIndexA !== dayIndexB) return dayIndexA - dayIndexB;
+                        return a.TimeSlot.localeCompare(b.TimeSlot);
+                    });
+
+                    // Add rows for this teacher
+                    teacherClasses.forEach(function(cls) {
+                        exportData.push(
+                            `${teacher.TeacherName}\t${cls.Day}\t${cls.TimeSlot}\t${cls.ClassName}\t${cls.Programme}`
+                        );
+                    });
+                }
+            });
+
+            const tsvString = exportData.join('\n');
+            copyToClipboard(tsvString, copyStatusEl);
+        }
+        
+        /**
+         * Exports the main deployment table as a TSV string.
+         */
+        function exportDeploymentTable() {
+             if (classes.length === 0) {
+                alert("Please process data first.");
+                return;
+            }
+            
+            let exportData = [];
+            // Add Header Row
+            exportData.push("Class Name\tSlot\tProgramme\tDay\tTime\tAssigned Teacher\tStatus");
+
+            // Sort classes by day and time
+            const sortedClasses = classes.slice().sort(function(a, b) {
+                const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+                const dayIndexA = days.indexOf(a.Day);
+                const dayIndexB = days.indexOf(b.Day);
+                if (dayIndexA !== dayIndexB) return dayIndexA - dayIndexB;
+                return a.TimeSlot.localeCompare(b.TimeSlot);
+            });
+
+            sortedClasses.forEach(function(cls) {
+                const required = parseInt(cls.RequiredTeachers);
+                for (let i = 0; i < required; i++) {
+                    const slotKey = getSlotKey(cls, i);
+                    const assignment = assignments[slotKey];
+                    const teacherName = (assignment && assignment.name !== "Unassigned") ? assignment.name : "";
+                    
+                    const statusEl = document.getElementById(`status-${slotKey}`);
+                    const statusText = statusEl ? statusEl.textContent : "Unassigned";
+
+                    exportData.push(
+                        `${cls.ClassName}\t${i+1}\t${cls.Programme}\t${cls.Day}\t${cls.TimeSlot}\t${teacherName}\t${statusText}`
+                    );
+                }
+            });
+
+            const tsvString = exportData.join('\n');
+            // Use the main copy status element for feedback
+            copyToClipboard(tsvString, copyStatusEl);
+        }
+    </script>
+</body>
+</html>
