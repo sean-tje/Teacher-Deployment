@@ -29,6 +29,10 @@
         .group-row:not(:last-child) .table-cell {
             border-bottom-style: dashed;
         }
+        /* Style for 0-hour teachers */
+        .zero-load-row {
+            background-color: #fee2e2; /* light red */
+        }
         .app-section {
             background-color: white;
             border-radius: 8px;
@@ -153,7 +157,12 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
 
         <!-- Section 3: Teacher Load Report -->
         <div class="app-section">
-            <h2 class="text-xl font-semibold text-gray-700 mb-4">Step 3: Teacher Load Report</h2>
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold text-gray-700">Step 3: Teacher Load Report</h2>
+                <button id="exportLoadButton" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Copy Load Report
+                </button>
+            </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead id="load-report-head">
@@ -227,6 +236,7 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
         const individualTableBody = document.getElementById('individual-table-body');
         const exportButton = document.getElementById('exportButton');
         const exportTableButton = document.getElementById('exportTableButton');
+        const exportLoadButton = document.getElementById('exportLoadButton'); // New button
         const copyStatusEl = document.getElementById('copy-status');
 
         // Event Listeners
@@ -234,6 +244,7 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
         teacherSelect.addEventListener('change', showIndividualSchedule);
         exportButton.addEventListener('click', exportAllSchedules);
         exportTableButton.addEventListener('click', exportDeploymentTable);
+        exportLoadButton.addEventListener('click', exportLoadReport); // New listener
 
         /**
          * Creates a unique key for a class session.
@@ -892,6 +903,12 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
                 // *** NEW FIX: Ensure load object exists ***
                 const load = loads[teacher.TeacherName] || { classes: 0, minutes: 0 };
                 const row = document.createElement('tr');
+                
+                // Add highlight class if 0 minutes
+                if (load.minutes === 0) {
+                    row.className = 'zero-load-row';
+                }
+
                 row.innerHTML = `
                     <td class="table-cell">${teacher.TeacherName}</td>
                     <td class="table-cell">${load.classes}</td>
@@ -1070,6 +1087,52 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
 
                 exportData.push(
                     `${cls.ClassName}\t${slotIndex}\t${cls.Programme}\t${cls.Day}\t${cls.TimeSlot}\t${teacherName}\t${statusText}`
+                );
+            });
+
+            const tsvString = exportData.join('\n');
+            // Use the main copy status element for feedback
+            copyToClipboard(tsvString, copyStatusEl);
+        }
+
+        /**
+         * NEW: Exports the teacher load report as a TSV string.
+         */
+        function exportLoadReport() {
+            if (teachers.length === 0) {
+                alert("Please process data first.");
+                return;
+            }
+
+            let exportData = [];
+            // Add Header Row
+            exportData.push("Teacher\tTotal Classes\tTotal Time (HH:MM)");
+            
+            const loads = {};
+            teachers.forEach(function(t) {
+                loads[t.TeacherName] = { classes: 0, minutes: 0 };
+            });
+
+            Object.keys(assignments).forEach(function(slotKey) {
+                const assignment = assignments[slotKey];
+                if (assignment.name !== "Unassigned" && loads.hasOwnProperty(assignment.name)) {
+                    const cls = getClassFromSlotKey(slotKey);
+                    if (cls) {
+                        loads[assignment.name].classes++;
+                        loads[assignment.name].minutes += getDurationInMinutes(cls.TimeSlot);
+                    }
+                }
+            });
+
+            // Sort teachers alphabetically
+            const sortedTeachers = teachers.slice().sort(function(a, b) {
+                return a.TeacherName.localeCompare(b.TeacherName);
+            });
+
+            sortedTeachers.forEach(function(teacher) {
+                const load = loads[teacher.TeacherName] || { classes: 0, minutes: 0 };
+                exportData.push(
+                    `${teacher.TeacherName}\t${load.classes}\t${formatMinutesToHM(load.minutes)}`
                 );
             });
 
