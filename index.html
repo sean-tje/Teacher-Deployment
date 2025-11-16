@@ -202,7 +202,7 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
         let teachers = [];
         let classes = [];
         // `assignments` stores the teacher assigned to a specific class *slot*
-        // key: unique key for class-slot (e..g, "1-1-Monday-09_00-10_00-0")
+        // key: unique key for class-slot (e.g., "1-1-Monday-09_00-10_00-0")
         // value: {name: TeacherName, type: 'auto'/'manual'}
         let assignments = {}; 
         let teacherOptionsHTML = '<option value="Unassigned">-- Unassigned --</option>';
@@ -233,6 +233,7 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
          * Creates a unique key for a class session.
          */
         function getClassKey(cls) {
+            // Note: Replaced colons with underscores for ID safety
             return `${cls.ClassName}-${cls.Day}-${cls.TimeSlot.replace(/:/g, '_')}`;
         }
 
@@ -630,16 +631,18 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
 
         /**
          * Finds the class object associated with a given slotKey.
+         * THIS WAS THE BUGGY FUNCTION.
          */
         function getClassFromSlotKey(slotKey) {
             // "1-1-Monday-09_00-10_00-0"
             const parts = slotKey.split('-');
-            const index = parts.pop();
-            const timeParts = parts.pop().split('_');
-            const day = parts.pop();
-            const className = parts.join('-');
-            const timeSlot = timeParts.join(':');
+            const index = parts.pop(); // Remove index
+            const timeKey = parts.pop(); // Remove time
+            const day = parts.pop(); // Remove day
+            const className = parts.join('-'); // Re-join class name
+            const timeSlot = timeKey.replace(/_/g, ':'); // Fix time
 
+            // Find the original class in the `classes` array
             return classes.find(function(c) {
                 return c.ClassName === className && c.Day === day && c.TimeSlot === timeSlot;
             });
@@ -659,7 +662,11 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
             const teacher = teachers.find(function(t) { return t.TeacherName === teacherName; });
             const classToAssign = getClassFromSlotKey(slotKey);
 
-            if (!teacher || !classToAssign) return conflicts;
+            if (!teacher || !classToAssign) {
+                 // This can happen if data is stale, but it's not a user-facing conflict
+                console.error("Could not find teacher or class for slotKey", slotKey);
+                return conflicts;
+            }
 
             const rules = parseRestrictions(teacher.Restrictions);
             const classLevel = classToAssign.ClassName.split('-')[0];
@@ -679,11 +686,14 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
 
             // 2. Same-Class Assignment Check
             const classKey = getClassKey(classToAssign);
-            for (let i = 0; i < parseInt(classToAssign.RequiredTeachers); i++) {
-                const otherSlotKey = `${classKey}-${i}`;
-                if (slotKey !== otherSlotKey && assignments[otherSlotKey] && assignments[otherSlotKey].name === teacherName) {
-                    conflicts.push(`<b>Double Assignment:</b> ${teacherName} is already assigned to another slot for this same class.`);
-                    break; // Only need to report this once
+            const required = parseInt(classToAssign.RequiredTeachers);
+            if (!isNaN(required)) {
+                for (let i = 0; i < required; i++) {
+                    const otherSlotKey = `${classKey}-${i}`;
+                    if (slotKey !== otherSlotKey && assignments[otherSlotKey] && assignments[otherSlotKey].name === teacherName) {
+                        conflicts.push(`<b>Double Assignment:</b> ${teacherName} is already assigned to another slot for this same class.`);
+                        break; // Only need to report this once
+                    }
                 }
             }
             
@@ -788,6 +798,11 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
          */
         function getDurationInMinutes(timeSlot) {
             try {
+                // Add a check for valid format
+                if (!timeSlot || !timeSlot.includes('-') || !timeSlot.includes(':')) {
+                    console.warn("Invalid timeSlot for duration calc:", timeSlot);
+                    return 0;
+                }
                 const parts = timeSlot.split('-');
                 const startTime = parts[0].split(':');
                 const endTime = parts[1].split(':');
@@ -806,6 +821,7 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
          * Formats total minutes into "HH:MM" string.
          */
         function formatMinutesToHM(minutes) {
+            if (isNaN(minutes)) return "00:00"; // Guard against NaN
             if (minutes === 0) return "00:00";
             const h = Math.floor(minutes / 60);
             const m = minutes % 60;
