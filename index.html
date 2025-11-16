@@ -202,7 +202,7 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
         let teachers = [];
         let classes = [];
         // `assignments` stores the teacher assigned to a specific class *slot*
-        // key: unique key for class-slot (e.g., "1-1-Monday-09_00-10_00-0")
+        // key: unique key for class-slot (e..g, "1-1-Monday-09_00-10_00-0")
         // value: {name: TeacherName, type: 'auto'/'manual'}
         let assignments = {}; 
         
@@ -317,6 +317,7 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
                      errors.push(`Class Schedule (Row ${index + 1}): Missing Programme for ${c.ClassName}.`);
                 }
 
+                // Updated check to allow 0
                 if (c.RequiredTeachers === "" || isNaN(parseInt(c.RequiredTeachers)) || parseInt(c.RequiredTeachers) < 0) {
                     errors.push(`Class Schedule (Row ${index + 1}): Invalid 'RequiredTeachers' for ${c.ClassName}. Must be a number 0 or greater.`);
                 }
@@ -706,6 +707,7 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
             classKeyParts.pop(); // remove the index
             const classKey = classKeyParts.join('-');
             
+            // We must find the original class entry from the `classes` array to know total required
             const originalClass = classes.find(function(c) {
                 return getClassKey(c) === classKey;
             });
@@ -887,7 +889,8 @@ Mr. Cho,LEVEL_ONLY:3"></textarea>
             });
 
             sortedTeachers.forEach(function(teacher) {
-                const load = loads[teacher.TeacherName];
+                // *** NEW FIX: Ensure load object exists ***
+                const load = loads[teacher.TeacherName] || { classes: 0, minutes: 0 };
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td class="table-cell">${teacher.TeacherName}</td>
